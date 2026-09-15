@@ -1,0 +1,28 @@
+name: Patch finalization diagnosis frontend
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-finalization-diagnosis.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply finalization diagnosis patch
+        run: python patch_finalization_diagnosis.py
+      - name: Verify Python syntax
+        run: python -m py_compile app.py
+      - name: Commit patched frontend
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Add Portfolio Failure Diagnosis finalization section"
+          git push
