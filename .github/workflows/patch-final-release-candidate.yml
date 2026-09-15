@@ -1,0 +1,28 @@
+name: Patch FLOWRIDE Final Release Candidate
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-final-release-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply final release candidate patch
+        run: python patch_final_release_candidate.py
+      - name: Verify Python syntax
+        run: python -m py_compile app.py
+      - name: Commit final release frontend
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Finalize FLOWRIDE release candidate UI"
+          git push
