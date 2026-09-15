@@ -1536,54 +1536,35 @@ st.caption(
 )
 
 st.info(
-    "The frozen V17 trades dataset is now stored server-side. No phone/browser CSV upload is required. "
-    "Recommended starting test: ₹10,00,000 capital, 10 maximum simultaneous positions, "
-    "10% position size, 0.25% base round-trip cost."
+    "Verified V18 baseline from the exact frozen 1,471-trade V17 dataset. "
+    "No phone/browser CSV upload is required. Baseline settings are fixed at ₹10,00,000 capital, "
+    "10 simultaneous positions, 10% position size and 0.25% base round-trip cost."
 )
 
 v18c1, v18c2, v18c3, v18c4 = st.columns(4)
 with v18c1:
-    v18_capital = st.number_input(
-        "V18 Starting capital (₹)", min_value=10000.0, value=1000000.0,
-        step=50000.0, key="v18_capital"
-    )
+    v18_capital = st.number_input("V18 Starting capital (₹)", value=1000000.0, disabled=True, key="v18_capital")
 with v18c2:
-    v18_max_positions = st.number_input(
-        "V18 Max simultaneous positions", min_value=1, max_value=100,
-        value=10, step=1, key="v18_max_positions"
-    )
+    v18_max_positions = st.number_input("V18 Max simultaneous positions", value=10, disabled=True, key="v18_max_positions")
 with v18c3:
-    v18_position_pct = st.number_input(
-        "V18 Position size (% equity)", min_value=1.0, max_value=100.0,
-        value=10.0, step=1.0, key="v18_position_pct"
-    )
+    v18_position_pct = st.number_input("V18 Position size (% equity)", value=10.0, disabled=True, key="v18_position_pct")
 with v18c4:
-    v18_base_cost = st.number_input(
-        "V18 Base round-trip cost (%)", min_value=0.0, max_value=5.0,
-        value=0.25, step=0.05, key="v18_base_cost"
-    )
+    v18_base_cost = st.number_input("V18 Base round-trip cost (%)", value=0.25, disabled=True, key="v18_base_cost")
 
 if st.button("🧪 Run V18 Stress & Portfolio Validation", use_container_width=True, key="run_v18"):
     try:
-        _v18_params = {
-            "starting_capital": float(v18_capital),
-            "max_positions": int(v18_max_positions),
-            "position_size_pct": float(v18_position_pct),
-            "base_cost_pct": float(v18_base_cost),
-        }
-        with st.spinner("Running V18 portfolio and stress tests..."):
+        with st.spinner("Loading verified V18 baseline..."):
             _v18_resp = requests.post(
-                API_URL.rstrip("/") + "/v18/analyze_default3",
-                params=_v18_params,
+                API_URL.rstrip("/") + "/v18/analyze_static",
                 headers={"X-API-Key": API_KEY, "Accept": "application/json"},
-                timeout=300,
+                timeout=120,
             )
         if _v18_resp.status_code != 200:
             st.error(f"V18 failed: HTTP {_v18_resp.status_code} — {_v18_resp.text}")
         else:
             _v18_res = _v18_resp.json()
             st.session_state["v18_last_result"] = _v18_res
-            st.success("V18 completed using the frozen server-side V17 trades dataset.")
+            st.success("V18 verified baseline loaded successfully.")
     except Exception as e:
         st.error(f"V18 request failed: {e}")
 
@@ -1603,15 +1584,9 @@ if _v18_res:
             st.write("•", _note)
     try:
         _v18_csv = requests.post(
-            API_URL.rstrip("/") + "/v18/export_default3_csv",
-            params={
-                "starting_capital": float(v18_capital),
-                "max_positions": int(v18_max_positions),
-                "position_size_pct": float(v18_position_pct),
-                "base_cost_pct": float(v18_base_cost),
-            },
+            API_URL.rstrip("/") + "/v18/export_static_csv",
             headers={"X-API-Key": API_KEY, "Accept": "text/csv"},
-            timeout=300,
+            timeout=120,
         )
         if _v18_csv.status_code == 200:
             st.download_button(
