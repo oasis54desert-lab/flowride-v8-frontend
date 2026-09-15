@@ -1,0 +1,28 @@
+name: Patch V20B fresh OOS frontend
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-v20b-fresh-oos.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply V20B frontend patch
+        run: python patch_v20b_fresh_oos.py
+      - name: Verify Streamlit syntax
+        run: python -m py_compile app.py
+      - name: Commit patched frontend
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Add V20B fresh OOS portfolio selection UI"
+          git push
