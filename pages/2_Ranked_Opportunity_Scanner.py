@@ -4,6 +4,8 @@ import requests
 import pandas as pd
 import streamlit as st
 
+ASYNC_PAGE_VERSION = "ASYNC-EOD-2026-09-15-R2"
+
 st.set_page_config(page_title="FLOWRIDE Opportunity Scanner", page_icon="🚀", layout="wide")
 
 API_URL = os.getenv("FLOWRIDE_API_URL", "").rstrip("/")
@@ -60,6 +62,7 @@ st.caption(
     "Async EOD scanner • V9 strategy logic unchanged • BUY → RIDE → EXIT lifecycle unchanged. "
     "Large scans run on the backend without holding one 10-minute HTTP request open."
 )
+st.caption(f"Scanner page: {ASYNC_PAGE_VERSION}")
 
 try:
     health = requests.get(API_URL + "/health", timeout=15).json()
@@ -159,8 +162,6 @@ if st.button("🔄 RUN EOD SCAN", type="primary", use_container_width=True):
             else:
                 status_box.info(f"Backend status: {state or 'UNKNOWN'}")
 
-            # The job itself remains on the backend. This only prevents a single
-            # Streamlit interaction from polling forever.
             if time.time() - started_at > 7200:
                 raise RuntimeError(
                     "The backend scan is still running after 2 hours. The job was not cancelled; "
@@ -180,8 +181,6 @@ if raw is not None:
     if isinstance(raw, dict):
         rows = raw.get("results")
         if rows is None:
-            # Backward compatibility with scan responses whose table may use a
-            # different conventional key.
             for key in ("stocks", "data", "scan", "opportunities"):
                 if isinstance(raw.get(key), list):
                     rows = raw.get(key)
@@ -198,7 +197,6 @@ if raw is not None:
     if df.empty:
         st.warning("The backend completed the scan but returned no tabular opportunities for these settings.")
     else:
-        # Put lifecycle columns first when present. No signal logic is altered.
         preferred = [
             "Symbol", "Name", "Exchange", "FLOWRIDE", "FlowState", "Lifecycle",
             "Signal", "Score", "FlowScore", "RSI", "RSI14", "ATR%", "ATRpct",
