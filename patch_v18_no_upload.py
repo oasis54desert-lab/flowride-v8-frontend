@@ -52,7 +52,7 @@ if st.button("🧪 Run V18 Stress & Portfolio Validation", use_container_width=T
         }
         with st.spinner("Running V18 portfolio and stress tests..."):
             _v18_resp = requests.post(
-                API_URL.rstrip("/") + "/v18/analyze_default",
+                API_URL.rstrip("/") + "/v18/analyze_default2",
                 params=_v18_params,
                 headers={"X-API-Key": API_KEY, "Accept": "application/json"},
                 timeout=300,
@@ -82,7 +82,7 @@ if _v18_res:
             st.write("•", _note)
     try:
         _v18_csv = requests.post(
-            API_URL.rstrip("/") + "/v18/export_default_csv",
+            API_URL.rstrip("/") + "/v18/export_default2_csv",
             params={
                 "starting_capital": float(v18_capital),
                 "max_positions": int(v18_max_positions),
@@ -107,4 +107,4 @@ if _v18_res:
 '''
 
 p.write_text(s[:i] + block + s[j:], encoding='utf-8')
-print('Patched app.py for V18 no-upload mode')
+print('Patched app.py for V18 no-upload mode using fixed backend endpoint')
