@@ -1,0 +1,28 @@
+name: Patch V20 robustness frontend
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-v20.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply V20 frontend patch
+        run: python patch_v20.py
+      - name: Verify Python syntax
+        run: python -m py_compile app.py
+      - name: Commit patched frontend
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Add V20 portfolio-selection robustness gate"
+          git push
