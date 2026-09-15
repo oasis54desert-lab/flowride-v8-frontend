@@ -26,3 +26,4 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "Finalize FLOWRIDE release candidate UI"
           git push
+# retrigger final release patch
