@@ -11,14 +11,14 @@ except Exception: pass
 if not API_URL or not API_KEY:
     st.error("Backend configuration is missing."); st.stop()
 
-def call(path,params=None,timeout=120):
-    r=requests.get(API_URL+path,params=params or {},headers={"X-API-Key":API_KEY,"Accept":"application/json"},timeout=timeout)
+def api(method,path,params=None,timeout=120):
+    r=requests.request(method,API_URL+path,params=params or {},headers={"X-API-Key":API_KEY,"Accept":"application/json"},timeout=timeout)
     if r.status_code>=400:
         try: detail=r.json().get("detail",r.text)
         except Exception: detail=r.text
         raise RuntimeError(str(detail))
     return r.json()
-
+def call(path,params=None,timeout=120): return api("GET",path,params,timeout)
 def fmt(v,suffix="",dec=2):
     try:
         if v is None or pd.isna(v): return "—"
@@ -26,10 +26,10 @@ def fmt(v,suffix="",dec=2):
     except Exception: return str(v) if v not in (None,"") else "—"
 
 st.markdown("""<style>
-.block-container{padding-top:2.8rem;max-width:1250px}.fr-hero{padding:1rem 0 .8rem}.fr-title{font-size:2.35rem;font-weight:850;line-height:1.12;overflow:visible}.fr-sub{opacity:.7;margin-top:.55rem}.fr-card{border:1px solid rgba(128,128,128,.25);border-radius:16px;padding:1rem 1.05rem;min-height:155px;margin-bottom:.7rem}.fr-card h4{margin:.1rem 0 .35rem}.fr-tag{font-size:.78rem;opacity:.7}.fr-online{border:1px solid rgba(46,204,113,.35);border-radius:12px;padding:.7rem 1rem;margin:.5rem 0 1rem}@media(max-width:600px){.block-container{padding-top:3.4rem;padding-left:1rem;padding-right:1rem}.fr-hero{padding-top:.8rem}.fr-title{font-size:1.9rem;line-height:1.2}}
+.block-container{padding-top:3.4rem;max-width:1250px}.fr-hero{padding:1rem 0 .8rem}.fr-title{font-size:2.35rem;font-weight:850;line-height:1.12;overflow:visible}.fr-sub{opacity:.7;margin-top:.55rem}.fr-card{border:1px solid rgba(128,128,128,.25);border-radius:16px;padding:1rem 1.05rem;min-height:155px;margin-bottom:.7rem}.fr-card h4{margin:.1rem 0 .35rem}.fr-tag{font-size:.78rem;opacity:.7}.fr-online{border:1px solid rgba(46,204,113,.35);border-radius:12px;padding:.7rem 1rem;margin:.5rem 0 1rem}@media(max-width:600px){.block-container{padding-top:4.2rem;padding-left:1rem;padding-right:1rem}.fr-hero{padding-top:.8rem}.fr-title{font-size:1.9rem;line-height:1.2}}
 </style>""",unsafe_allow_html=True)
 st.markdown('<div class="fr-hero"><div class="fr-title">🧭 FLOWRIDE Strategy Studio</div><div class="fr-sub">Discover → Validate → Track → BUY → RIDE → EXIT</div></div>',unsafe_allow_html=True)
-st.caption("V19.2 • Verified research evidence • Production BUY → RIDE → EXIT remains frozen")
+st.caption("V19.3 • One-tap validation • Production BUY → RIDE → EXIT remains frozen")
 try:
     h=requests.get(API_URL+"/health",timeout=20).json()
     st.markdown(f'<div class="fr-online">🟢 <b>Backend online</b> • Universe <b>{int(h.get("total",0)):,}</b> • NSE {int(h.get("nse",0)):,} • BSE {int(h.get("bse",0)):,}</div>',unsafe_allow_html=True)
@@ -51,16 +51,34 @@ st.markdown(f"## {s['icon']} {s['name']}")
 a,b,c=st.columns(3); a.metric("Layer",s["layer"]); b.metric("Status",s["status"]); c.metric("Evidence",s["source"])
 st.write(s["purpose"])
 st.divider(); st.subheader("📊 Verified Performance Evidence")
-st.caption("Metrics below are read from completed backend research. FLOWRIDE does not estimate missing values.")
+st.caption("Metrics are read from completed backend research. Missing values are never estimated.")
 
 if selected=="FLOWRIDE RC1 Lifecycle":
-    job_id=st.text_input("Completed V17 robustness job ID",key="studio_v17_job",placeholder="Paste completed V17 job ID")
-    if st.button("Load V17 evidence",type="primary",use_container_width=True,disabled=not bool(job_id)):
+    jid=st.session_state.get("studio_v17_job_id")
+    if not jid:
+        st.info("No V17 run is attached to this browser session. Start the frozen validation below; FLOWRIDE will keep the job ID and load the result automatically.")
+        if st.button("▶ Run frozen V17 validation",type="primary",use_container_width=True):
+            try:
+                started=api("POST","/v17_rc1_robustness_job/start",{"exchange":"NSE","limit":250,"period":"2y","dev_seed":357,"seed1":683,"seed2":797,"seed3":911,"total_cost_pct":0.25})
+                st.session_state["studio_v17_job_id"]=started.get("job_id")
+                st.session_state.pop("studio_v17_result",None)
+                st.rerun()
+            except Exception as e: st.error(f"Could not start V17: {e}")
+    else:
         try:
-            raw=call("/v17_rc1_robustness_job/result",{"job_id":job_id})
-            if raw.get("status") and raw.get("status")!="COMPLETED": st.warning(f"Job {raw.get('status')}: {raw.get('message','')}")
-            else: st.session_state["studio_v17_result"]=raw
-        except Exception as e: st.error(f"Could not load V17 result: {e}")
+            status=call("/v17_rc1_robustness_job/status",{"job_id":jid},30)
+            state=status.get("status","UNKNOWN"); pct=float(status.get("progress_pct",0) or 0)
+            st.progress(max(0.0,min(1.0,pct/100.0)),text=f"V17 {state} • {pct:.0f}% • {status.get('message','')}")
+            if state=="COMPLETED":
+                if "studio_v17_result" not in st.session_state:
+                    st.session_state["studio_v17_result"]=call("/v17_rc1_robustness_job/result",{"job_id":jid},120)
+            elif state in {"QUEUED","RUNNING"}:
+                if st.button("↻ Refresh validation progress",use_container_width=True): st.rerun()
+            elif state=="FAILED": st.error(status.get("error") or "V17 validation failed.")
+        except Exception as e:
+            st.warning(f"Saved V17 job is no longer available on the backend: {e}")
+            if st.button("Clear saved job and start again",use_container_width=True):
+                st.session_state.pop("studio_v17_job_id",None); st.session_state.pop("studio_v17_result",None); st.rerun()
     raw=st.session_state.get("studio_v17_result")
     if raw and raw.get("aggregate_robustness"):
         ag=raw["aggregate_robustness"]
@@ -71,22 +89,24 @@ if selected=="FLOWRIDE RC1 Lifecycle":
         st.info(f"Robustness interpretation: {ag.get('RobustnessInterpretation','—')} • No seed selection • No threshold tuning")
         rows=pd.DataFrame(raw.get("per_seed_trade_metrics",[]))
         if not rows.empty:
-            wanted=[x for x in ["ValidationSeed","Completed Trades","Win Rate %","Avg Net Return %","Median Net Return %","Profit Factor","Avg MFE %","Avg MAE %","Verdict"] if x in rows.columns]
-            st.markdown("### Validation seeds"); st.dataframe(rows[wanted] if wanted else rows,use_container_width=True,hide_index=True)
-            chart_cols=[x for x in ["Avg Net Return %","Profit Factor","Win Rate %"] if x in rows.columns]
-            if chart_cols and "ValidationSeed" in rows.columns:
-                chart=rows.set_index("ValidationSeed")[chart_cols].apply(pd.to_numeric,errors="coerce")
+            st.markdown("### Validation seeds"); st.dataframe(rows,use_container_width=True,hide_index=True)
+            numeric=[]
+            for col in ["AvgNetReturnPct","ProfitFactor","WinRatePct"]:
+                if col in rows.columns: numeric.append(col)
+            if numeric and "ValidationSeed" in rows.columns:
+                chart=rows.set_index("ValidationSeed")[numeric].apply(pd.to_numeric,errors="coerce")
                 st.markdown("### Cross-seed stability"); st.bar_chart(chart)
         with st.expander("Research definition & controls"):
             st.write(raw.get("frozen_candidate","")); st.write("Primary criteria:",raw.get("primary_criteria",[])); st.write(raw.get("benchmark_definition",""))
-    else: st.info("Paste a completed V17 job ID to display genuine pooled and per-seed results.")
+        if st.button("Run a new V17 validation",use_container_width=True):
+            st.session_state.pop("studio_v17_job_id",None); st.session_state.pop("studio_v17_result",None); st.rerun()
 elif selected=="Portfolio Stress":
-    st.info("V18 is verified in the backend and accepts a V17 completed-trades CSV. Its real outputs include Total Return, CAGR, portfolio drawdown, win rate, profit factor, exposure, cost stress and winner sensitivity. We will not show values until a V17 trade file is analyzed.")
-    st.caption("Important: V18 drawdown is realized-equity based because the completed-trade file does not contain daily mark-to-market paths; intratrade drawdown can therefore be understated.")
-elif selected=="Early Watch": st.info("Research-only layer. Use its forward setup metrics to measure conversion, false alerts and opportunity capture; it does not change production BUY.")
-elif selected=="Discovery Quality / Ranking": st.info("Research-only ranking layer. Candidate rank is evidence for prioritization, not automatic admission into production.")
+    st.info("V18 uses the completed V17 trades and reports Total Return, CAGR, portfolio drawdown, win rate, profit factor, exposure, transaction-cost stress and winner sensitivity. Values remain hidden until real V17 trade data is analyzed.")
+    st.caption("V18 drawdown is realized-equity based; completed-trade inputs do not contain daily mark-to-market paths, so intratrade drawdown can be understated.")
+elif selected=="Early Watch": st.info("Research-only layer. Measure conversion, false alerts and opportunity capture without changing production BUY.")
+elif selected=="Discovery Quality / Ranking": st.info("Research-only ranking layer. Candidate rank prioritizes attention; it is not automatic production admission.")
 else: st.info("Research-only winner-management layer. Evaluate MFE, MAE, giveback and holding behavior without weakening the frozen risk stop.")
 
 st.divider(); st.subheader("🔒 Validation Guardrails")
-st.markdown("Production BUY / RIDE / EXIT remains frozen • All predeclared validation seeds are reported • No unfavorable seed may be discarded • No threshold tuning from V17 evidence • Transaction costs and portfolio constraints remain explicit • Missing metrics are never invented")
-st.caption("FLOWRIDE V19.2 Strategy Studio • additive frontend only • V19.1 preserved on preserve-v19.1-2026-09-16")
+st.markdown("Production BUY / RIDE / EXIT remains frozen • Predeclared OOS seeds 683, 797 and 911 are all reported • DEV seed 357 remains separate • No unfavorable seed may be discarded • No threshold tuning from V17 evidence • 0.25% round-trip cost is explicit • Missing metrics are never invented")
+st.caption("FLOWRIDE V19.3 Strategy Studio • additive frontend only • V19.1 preserved on preserve-v19.1-2026-09-16")
