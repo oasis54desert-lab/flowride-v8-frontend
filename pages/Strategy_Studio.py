@@ -29,7 +29,7 @@ st.markdown("""<style>
 .block-container{padding-top:3.4rem;max-width:1250px}.fr-hero{padding:1rem 0 .8rem}.fr-title{font-size:2.35rem;font-weight:850;line-height:1.12;overflow:visible}.fr-sub{opacity:.7;margin-top:.55rem}.fr-card{border:1px solid rgba(128,128,128,.25);border-radius:16px;padding:1rem 1.05rem;min-height:155px;margin-bottom:.7rem}.fr-card h4{margin:.1rem 0 .35rem}.fr-tag{font-size:.78rem;opacity:.7}.fr-online{border:1px solid rgba(46,204,113,.35);border-radius:12px;padding:.7rem 1rem;margin:.5rem 0 1rem}@media(max-width:600px){.block-container{padding-top:4.2rem;padding-left:1rem;padding-right:1rem}.fr-hero{padding-top:.8rem}.fr-title{font-size:1.9rem;line-height:1.2}}
 </style>""",unsafe_allow_html=True)
 st.markdown('<div class="fr-hero"><div class="fr-title">🧭 FLOWRIDE Strategy Studio</div><div class="fr-sub">Discover → Validate → Diagnose → Track → BUY → RIDE → EXIT</div></div>',unsafe_allow_html=True)
-st.caption("V19.4 • Frozen validation + diagnostic research • Production BUY → RIDE → EXIT remains frozen")
+st.caption("V19.5 • Frozen validation + preregistered Challenger V1 • Production BUY → RIDE → EXIT remains frozen")
 try:
     h=requests.get(API_URL+"/health",timeout=20).json()
     st.markdown(f'<div class="fr-online">🟢 <b>Backend online</b> • Universe <b>{int(h.get("total",0)):,}</b> • NSE {int(h.get("nse",0)):,} • BSE {int(h.get("bse",0)):,}</div>',unsafe_allow_html=True)
@@ -38,6 +38,7 @@ except Exception: st.warning("Backend is waking up or unavailable.")
 STRATEGIES=[
 {"name":"FLOWRIDE RC1 Lifecycle","icon":"🌊","layer":"Production candidate","status":"FROZEN","source":"V16 / V17","purpose":"Frozen RC1 lifecycle validated across predeclared OOS seeds."},
 {"name":"Accuracy Research","icon":"🔬","layer":"Diagnosis","status":"RESEARCH","source":"V17 diagnostic","purpose":"Compare winner-vs-loser entry conditions without changing production rules."},
+{"name":"Challenger V1","icon":"🧪","layer":"Fresh validation","status":"PREREGISTERED","source":"Fresh seeds 1013 / 1129 / 1237","purpose":"Test frozen RC1 + VolRatio5D [1.50, 2.00) on untouched seeds without changing production."},
 {"name":"Early Watch","icon":"👀","layer":"Discovery","status":"RESEARCH","source":"V4 → V15","purpose":"Observe developing setups before strict lifecycle BUY."},
 {"name":"Discovery Quality / Ranking","icon":"🏆","layer":"Ranking","status":"RESEARCH","source":"V9 → V12","purpose":"Rank simultaneous candidates separately from trade management."},
 {"name":"Winner Path","icon":"🚀","layer":"Exit research","status":"RESEARCH","source":"V5 → V7","purpose":"Study winner development, MFE, MAE and profit capture."},
@@ -136,6 +137,56 @@ elif selected=="Accuracy Research":
         with st.expander("Diagnostic guardrails"):
             st.write(raw.get("frozen_candidate","")); st.write(rules)
 
+elif selected=="Challenger V1":
+    st.warning("PREREGISTERED RESEARCH ONLY — rule is frozen before fresh-seed validation. Production BUY → RIDE → EXIT is unchanged.")
+    st.write("**Frozen hypothesis:** RC1 + signal-day 5-session average VolRatio ≥ 1.50 and < 2.00")
+    st.caption("Fresh untouched validation seeds: 1013, 1129 and 1237 • No seed selection • No threshold retuning")
+    jid=st.session_state.get("studio_ch1_job_id")
+    if not jid:
+        if st.button("🧪 Run Challenger V1 Fresh Validation",type="primary",use_container_width=True):
+            try:
+                started=api("POST","/challenger_v1/start",{})
+                st.session_state["studio_ch1_job_id"]=started.get("job_id")
+                st.session_state.pop("studio_ch1_result",None)
+                st.rerun()
+            except Exception as e: st.error(f"Could not start Challenger V1: {e}")
+    else:
+        try:
+            status=call("/challenger_v1/status",{"job_id":jid},30)
+            state=status.get("status","UNKNOWN"); pct=float(status.get("progress_pct",0) or 0)
+            st.progress(max(0.0,min(1.0,pct/100.0)),text=f"Challenger V1 {state} • {pct:.0f}% • {status.get('message','')}")
+            if state=="COMPLETED":
+                if "studio_ch1_result" not in st.session_state:
+                    st.session_state["studio_ch1_result"]=call("/challenger_v1/result",{"job_id":jid},120)
+            elif state in {"QUEUED","RUNNING"}:
+                if st.button("↻ Refresh Challenger V1 progress",use_container_width=True): st.rerun()
+            elif state=="FAILED": st.error(status.get("error") or "Challenger V1 failed.")
+        except Exception as e:
+            st.warning(f"Challenger V1 job is unavailable: {e}")
+            if st.button("Clear saved Challenger V1 job",use_container_width=True):
+                st.session_state.pop("studio_ch1_job_id",None); st.session_state.pop("studio_ch1_result",None); st.rerun()
+    raw=st.session_state.get("studio_ch1_result")
+    if raw:
+        b=raw.get("pooled_baseline",{}); ch=raw.get("pooled_challenger",{})
+        st.markdown("### Fresh-seed pooled comparison")
+        m1,m2,m3,m4=st.columns(4)
+        m1.metric("Challenger trades",fmt(ch.get("Trades"),dec=0))
+        m2.metric("Win rate",fmt(ch.get("WinRatePct"),"%"))
+        m3.metric("Avg net return",fmt(ch.get("AvgNetReturnPct"),"%",3))
+        m4.metric("Profit factor",fmt(ch.get("ProfitFactor"),dec=3))
+        comp=pd.DataFrame([{"Variant":"Baseline RC1",**b},{"Variant":"Challenger V1",**ch}])
+        st.dataframe(comp,use_container_width=True,hide_index=True)
+        rows=[]
+        for x in raw.get("per_seed",[]):
+            seed=x.get("ValidationSeed")
+            for variant,key in [("Baseline RC1","BaselineRC1"),("Challenger V1","ChallengerV1")]:
+                rows.append({"ValidationSeed":seed,"Variant":variant,**(x.get(key) or {})})
+        if rows:
+            st.markdown("### Seed-by-seed results")
+            st.dataframe(pd.DataFrame(rows),use_container_width=True,hide_index=True)
+        st.info("Interpret only after all three untouched seeds complete. Do not change the 1.50–2.00 rule from these results.")
+        with st.expander("Preregistration guardrails"): st.write(raw.get("guardrails",{}))
+
 elif selected=="Portfolio Stress":
     st.info("V18 uses the completed V17 trades and reports Total Return, CAGR, portfolio drawdown, win rate, profit factor, exposure, transaction-cost stress and winner sensitivity. Values remain hidden until real V17 trade data is analyzed.")
     st.caption("V18 drawdown is realized-equity based; completed-trade inputs do not contain daily mark-to-market paths, so intratrade drawdown can be understated.")
@@ -145,4 +196,4 @@ else: st.info("Research-only winner-management layer. Evaluate MFE, MAE, givebac
 
 st.divider(); st.subheader("🔒 Validation Guardrails")
 st.markdown("Production BUY / RIDE / EXIT remains frozen • V17 baseline remains frozen • Predeclared OOS seeds 683, 797 and 911 are all reported • DEV seed 357 remains separate • No unfavorable seed may be discarded • Accuracy Research is diagnostic only • No production threshold tuning from observed V17 evidence • 0.25% round-trip cost is explicit • Missing metrics are never invented")
-st.caption("FLOWRIDE V19.4 Strategy Studio • additive diagnostic frontend • V19.3 remains available by commit history")
+st.caption("FLOWRIDE V19.5 Strategy Studio • preregistered Challenger V1 added • earlier versions remain available by commit history")
