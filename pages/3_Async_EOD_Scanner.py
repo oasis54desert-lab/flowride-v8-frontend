@@ -4,7 +4,7 @@ import requests
 import pandas as pd
 import streamlit as st
 
-ASYNC_PAGE_VERSION = "ASYNC-EOD-2026-09-15-R3"
+ASYNC_PAGE_VERSION = "ASYNC-EOD-2026-09-19-R4-ACTIVE-COHORT"
 
 st.set_page_config(page_title="FLOWRIDE Async EOD Scanner", page_icon="🚀", layout="wide")
 
@@ -60,7 +60,7 @@ def post(path, params=None, timeout=30):
 st.title("🚀 Async EOD Scanner")
 st.caption(
     "Async EOD scanner • V9 strategy logic unchanged • BUY → RIDE → EXIT lifecycle unchanged. "
-    "Large scans run as backend jobs, so the browser does not hold one long scan request open."
+    "Large scans run as backend jobs. Active BUY/RIDE names are now re-scanned every EOD until their lifecycle closes, even if the discovery sample changes."
 )
 st.success(f"Scanner page: {ASYNC_PAGE_VERSION}")
 
@@ -72,6 +72,16 @@ try:
     )
 except Exception:
     st.warning("Backend may be waking up. Try again in a moment.")
+
+try:
+    cohort = get("/active_cohort/status", {"exchange": "NSE"}, timeout=15)
+    st.success(
+        f"Persistent active cohort: {int(cohort.get('active_count', 0) or 0)} NSE names "
+        f"• storage: {cohort.get('storage', 'unknown')} "
+        f"• strategy changed: {cohort.get('strategy_changed', False)}"
+    )
+except Exception:
+    st.info("Active-cohort status will appear after the updated backend finishes deploying.")
 
 c1, c2, c3 = st.columns(3)
 with c1:
@@ -192,7 +202,8 @@ if raw is not None:
         st.warning("The backend completed the scan but returned no tabular opportunities for these settings.")
     else:
         preferred = [
-            "Symbol", "Name", "Exchange", "FLOWRIDE", "FlowState", "Lifecycle",
+            "Symbol", "Name", "Exchange", "Tracking Source", "Cohort Event",
+            "FLOWRIDE", "FlowState", "Lifecycle",
             "Signal", "Score", "FlowScore", "RSI", "RSI14", "ATR%", "ATRpct",
             "EarlyWatch", "OpportunityClass",
         ]
@@ -208,6 +219,10 @@ if raw is not None:
             use_container_width=True,
         )
 
+        if "Tracking Source" in df.columns:
+            active_rows = int(df["Tracking Source"].astype(str).str.contains("ACTIVE_COHORT", na=False).sum())
+            st.metric("Persistently tracked active names in this result", active_rows)
+
         lifecycle_col = next((c for c in ["FLOWRIDE", "FlowState", "Lifecycle", "State"] if c in df.columns), None)
         if lifecycle_col:
             counts = df[lifecycle_col].astype(str).str.upper().value_counts()
@@ -215,5 +230,5 @@ if raw is not None:
             for col, label in zip(cols, ["BUY", "RIDE", "EXIT", "FLAT"]):
                 col.metric(label, int(counts.get(label, 0)))
 
-st.caption("Same-day cache is backend-memory only and clears on backend restart or redeploy.")
+st.caption("Discovery sampling may change, but previously observed BUY/RIDE names are persistently re-scanned until lifecycle closure. Same-day result cache remains backend-memory only.")
 st.warning("FLOWRIDE is a research and decision-support tool. EOD signals are not guaranteed outcomes; use independent judgment and risk controls.")
